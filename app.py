@@ -55,7 +55,23 @@ def index():
             # Obtener información del usuario
             cursor.execute("SELECT * FROM usuarios WHERE id = %s", (session['user_id'],))
             usuario = cursor.fetchone()
+
+            # Obtener número de notificaciones no leídas
+            cursor.execute("""
+                SELECT COUNT(*) AS count FROM notificaciones 
+                WHERE usuario_id = %s AND leida = FALSE
+            """, (session['user_id'],))
+            num_notificaciones_no_leidas = cursor.fetchone()['count']
             
+            # Obtener notificaciones recientes para el dropdown
+            cursor.execute("""
+                SELECT * FROM notificaciones 
+                WHERE usuario_id = %s 
+                ORDER BY fecha_notificacion DESC 
+                LIMIT 3
+            """, (session['user_id'],))
+            notificaciones_recientes = cursor.fetchall()
+
             # Obtener publicaciones del muro
             cursor.execute("""
                 SELECT p.id, p.contenido, p.fecha_publicacion, u.nombre, u.apellido, 
@@ -73,7 +89,7 @@ def index():
             """, (session['user_id'], session['user_id'], session['user_id']))
             publicaciones = cursor.fetchall()
             
-            # Obtener comentarios para cada publicación (versión corregida)
+            # Obtener comentarios para cada publicación
             for pub in publicaciones:
                 cursor.execute("""
                     SELECT c.id, c.contenido, c.fecha_publicacion, 
@@ -98,7 +114,16 @@ def index():
             """, (session['user_id'], session['user_id']))
             amigos = cursor.fetchall()
             
-            # Contar mensajes no leídos (versión corregida)
+            # Obtener solicitudes de amistad pendientes (NUEVO)
+            cursor.execute("""
+                SELECT u.id, u.nombre, u.apellido, a.fecha_amistad
+                FROM usuarios u
+                JOIN amistades a ON u.id = a.usuario1_id
+                WHERE a.usuario2_id = %s AND a.estado = 'pendiente'
+            """, (session['user_id'],))
+            solicitudes = cursor.fetchall()
+            
+            # Contar mensajes no leídos
             cursor.execute("""
                 SELECT COUNT(*) AS unread_count FROM mensajes 
                 WHERE receptor_id = %s AND leido = FALSE
@@ -106,22 +131,19 @@ def index():
             result = cursor.fetchone()
             unread_count = result['unread_count'] if result else 0
             
-            print("Estructura de comentarios:")
-            for pub in publicaciones:
-                print(f"Publicación {pub['id']} tiene {len(pub['comentarios'])} comentarios")
-                for comentario in pub['comentarios']:
-                    print(comentario)  # Verifica las claves disponibles
-        return render_template('index.html', 
-                            usuario=usuario, 
+        return render_template('index.html',
+                            usuario=usuario,
                             publicaciones=publicaciones,
                             amigos=amigos,
-                            unread_count=unread_count)
+                            solicitudes=solicitudes,  # Ahora está definida
+                            unread_count=unread_count,
+                            num_notificaciones_no_leidas=num_notificaciones_no_leidas,
+                            notificaciones_recientes=notificaciones_recientes)
             
     except mysql.connector.Error as err:
         flash('Error de base de datos. Por favor intenta nuevamente.', 'error')
         print(f"Database error: {err}")
         return redirect(url_for('login'))
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -293,44 +315,53 @@ def like(publicacion_id):
     
     return redirect(url_for('index'))
 
-
 @app.route('/mensajes')
 def mensajes():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    try:
+        with get_db_cursor() as cursor:
+            # Get conversations
+            cursor.execute("""
+                SELECT u.id, u.nombre, u.apellido, 
+                       (SELECT contenido FROM mensajes 
+                        WHERE (emisor_id = %s AND receptor_id = u.id) 
+                           OR (emisor_id = u.id AND receptor_id = %s)
+                        ORDER BY fecha_envio DESC LIMIT 1) AS ultimo_mensaje,
+                       (SELECT fecha_envio FROM mensajes 
+                        WHERE (emisor_id = %s AND receptor_id = u.id) 
+                           OR (emisor_id = u.id AND receptor_id = %s)
+                        ORDER BY fecha_envio DESC LIMIT 1) AS fecha_ultimo_mensaje,
+                       (SELECT COUNT(*) FROM mensajes 
+                        WHERE receptor_id = %s AND emisor_id = u.id AND leido = FALSE) AS no_leidos
+                FROM usuarios u
+                WHERE u.id IN (
+                    SELECT emisor_id FROM mensajes WHERE receptor_id = %s
+                    UNION
+                    SELECT receptor_id FROM mensajes WHERE emisor_id = %s
+                )
+                ORDER BY fecha_ultimo_mensaje DESC
+            """, (session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id']))
+            
+            conversaciones = cursor.fetchall()
+            
+            # Get total unread count for the current user
+            cursor.execute("""
+                SELECT COUNT(*) AS unread_count FROM mensajes 
+                WHERE receptor_id = %s AND leido = FALSE
+            """, (session['user_id'],))
+            unread_count = cursor.fetchone()['unread_count']
+            
+        return render_template('mensajes.html', 
+                            conversaciones=conversaciones,
+                            unread_count=unread_count)
+            
+    except Exception as e:
+        flash('Error loading messages', 'error')
+        print(f"Messages error: {e}")
+        return redirect(url_for('index'))
     
-    # Obtener conversaciones
-    cursor.execute("""
-        SELECT u.id, u.nombre, u.apellido, 
-               (SELECT contenido FROM mensajes 
-                WHERE (emisor_id = %s AND receptor_id = u.id) 
-                   OR (emisor_id = u.id AND receptor_id = %s)
-                ORDER BY fecha_envio DESC LIMIT 1) AS ultimo_mensaje,
-               (SELECT fecha_envio FROM mensajes 
-                WHERE (emisor_id = %s AND receptor_id = u.id) 
-                   OR (emisor_id = u.id AND receptor_id = %s)
-                ORDER BY fecha_envio DESC LIMIT 1) AS fecha_ultimo_mensaje,
-               (SELECT COUNT(*) FROM mensajes 
-                WHERE receptor_id = %s AND emisor_id = u.id AND leido = FALSE) AS no_leidos
-        FROM usuarios u
-        WHERE u.id IN (
-            SELECT emisor_id FROM mensajes WHERE receptor_id = %s
-            UNION
-            SELECT receptor_id FROM mensajes WHERE emisor_id = %s
-        )
-        ORDER BY fecha_ultimo_mensaje DESC
-    """, (session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id']))
-    
-    conversaciones = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('mensajes.html', conversaciones=conversaciones)
-
 @app.route('/mensajes/<int:usuario_id>', methods=['GET', 'POST'])
 def conversacion(usuario_id):
     if 'user_id' not in session:
@@ -661,5 +692,90 @@ def logout():
     flash('Has cerrado sesión correctamente', 'info')
     return redirect(url_for('login'))
 
+# ... (all your other routes remain above this)
+
+@app.route('/notificaciones')
+def notificaciones():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    try:
+        with get_db_cursor() as cursor:
+            # Get unread notifications
+            cursor.execute("""
+                SELECT * FROM notificaciones 
+                WHERE usuario_id = %s AND leida = FALSE
+                ORDER BY fecha_notificacion DESC
+            """, (session['user_id'],))
+            notificaciones_no_leidas = cursor.fetchall()
+
+            # Get read notifications (last 5)
+            cursor.execute("""
+                SELECT * FROM notificaciones 
+                WHERE usuario_id = %s AND leida = TRUE
+                ORDER BY fecha_notificacion DESC
+                LIMIT 5
+            """, (session['user_id'],))
+            notificaciones_leidas = cursor.fetchall()
+
+        return render_template('notificaciones.html',
+                            no_leidas=notificaciones_no_leidas,
+                            leidas=notificaciones_leidas)
+
+    except Exception as e:
+        flash('Error loading notifications', 'error')
+        print(f"Notification error: {e}")
+        return redirect(url_for('index'))
+
+@app.context_processor
+def inject_unread_count():
+    if 'user_id' in session:
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*) AS unread_count FROM mensajes 
+                    WHERE receptor_id = %s AND leido = FALSE
+                """, (session['user_id'],))
+                result = cursor.fetchone()
+                return {'unread_count': result['unread_count'] if result else 0}
+        except Exception as e:
+            print(f"Error getting unread count: {e}")
+            return {'unread_count': 0}
+    return {'unread_count': 0}
+
+@app.route('/marcar_notificacion/<int:notif_id>', methods=['POST'])
+def marcar_notificacion(notif_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                UPDATE notificaciones 
+                SET leida = TRUE 
+                WHERE id = %s AND usuario_id = %s
+            """, (notif_id, session['user_id']))
+            
+        flash('Notification marked as read', 'success')
+    except Exception as e:
+        flash('Error marking notification', 'error')
+        print(f"Mark notification error: {e}")
+    
+    return redirect(url_for('notificaciones'))
+
+
+
+def crear_notificacion(usuario_id, tipo, contenido):
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO notificaciones (usuario_id, tipo, contenido)
+                VALUES (%s, %s, %s)
+            """, (usuario_id, tipo, contenido))
+    except Exception as e:
+        print(f"Error al crear notificación: {e}")
+
+
+# This should be the VERY LAST LINE in your file
 if __name__ == '__main__':
     app.run(debug=True)

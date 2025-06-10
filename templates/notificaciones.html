@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Notificaciones{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4>Tus Notificaciones</h4>
+        </div>
+        
+        <div class="card-body">
+            <!-- Notificaciones no leídas -->
+            <h5 class="mb-3">Nuevas</h5>
+            {% if no_leidas %}
+                <div class="list-group mb-4">
+                    {% for notif in no_leidas %}
+                    <div class="list-group-item list-group-item-action list-group-item-primary">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ notif.tipo|capitalize }}:</strong> {{ notif.contenido }}
+                                <small class="d-block text-muted">{{ notif.fecha_notificacion.strftime('%d/%m/%Y %H:%M') }}</small>
+                            </div>
+                            <form method="POST" action="{{ url_for('marcar_notificacion', notif_id=notif.id) }}">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    <i class="bi bi-check"></i> Marcar como leída
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No tienes notificaciones nuevas</p>
+            {% endif %}
+            
+            <!-- Notificaciones leídas -->
+            <h5 class="mb-3">Anteriores</h5>
+            {% if leidas %}
+                <div class="list-group">
+                    {% for notif in leidas %}
+                    <div class="list-group-item list-group-item-secondary">
+                        <div>
+                            <strong>{{ notif.tipo|capitalize }}:</strong> {{ notif.contenido }}
+                            <small class="d-block text-muted">{{ notif.fecha_notificacion.strftime('%d/%m/%Y %H:%M') }}</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No hay notificaciones anteriores</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

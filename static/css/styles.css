@@ -111,6 +111,27 @@ a {
     background: #555;
 }
 
+/* Estilos para notificaciones */
+.list-group-item.list-group-item-primary {
+    background-color: #cfe2ff;
+}
+
+.list-group-item.list-group-item-secondary {
+    background-color: #e2e3e5;
+}
+
+.dropdown-menu {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 0.7em;
+}
+
 footer {
     position: fixed;
     bottom: 0;

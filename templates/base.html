@@ -24,10 +24,43 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('buscar') }}">Buscar amigos</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('mensajes') }}">
+                            <i class="bi bi-envelope{% if unread_count > 0 %}-fill{% endif %}"></i> Mensajes
+                            {% if unread_count > 0 %}
+                            <span class="badge bg-danger rounded-pill">{{ unread_count }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     {% if 'user_id' in session %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarNotificaciones" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-bell"></i>
+                            {% if num_notificaciones_no_leidas > 0 %}
+                            <span class="badge bg-danger rounded-pill">{{ num_notificaciones_no_leidas }}</span>
+                            {% endif %}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">Notificaciones</h6></li>
+                            {% if num_notificaciones_no_leidas > 0 %}
+                                {% for notif in notificaciones_recientes %}
+                                <li>
+                                    <a class="dropdown-item" href="{{ url_for('notificaciones') }}">
+                                        <small>{{ notif.contenido }}</small>
+                                        <small class="d-block text-muted">{{ notif.fecha_notificacion.strftime('%d/%m %H:%M') }}</small>
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            {% else %}
+                                <li><a class="dropdown-item" href="{{ url_for('notificaciones') }}">No hay notificaciones nuevas</a></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('notificaciones') }}">Ver todas</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-person-fill"></i> {{ session['nombre'] }}
