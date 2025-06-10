@@ -2,8 +2,6 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import mysql.connector
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-from contextlib import contextmanager
-
 
 app = Flask(__name__)
 app.secret_key = '754008b5554056dc63cc680d6075df88e40cafe380c1fa105a13e2ac6f91307f'
@@ -16,34 +14,8 @@ db_config = {
     'database': 'red_social'
 }
 
-@contextmanager
-def get_db_cursor():
-    conn = None
-    cursor = None
-    try:
-        conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor(dictionary=True)
-        yield cursor
-        conn.commit()
-    except mysql.connector.Error as err:
-        print(f"Database error: {err}")
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
 def get_db_connection():
-    try:
-        conn = mysql.connector.connect(**db_config)
-        return conn
-    except mysql.connector.Error as err:
-        print(f"Error de conexión: {err}")
-        raise  # Re-lanza la excepción para manejarla en el llamador
+    return mysql.connector.connect(**db_config)
 
 # Rutas de la aplicación
 @app.route('/')
@@ -51,71 +23,72 @@ def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    try:
-        with get_db_cursor() as cursor:
-            # Obtener información del usuario
-            cursor.execute("SELECT * FROM usuarios WHERE id = %s", (session['user_id'],))
-            usuario = cursor.fetchone()
-            
-            # Obtener publicaciones del muro
-            cursor.execute("""
-                SELECT p.id, p.contenido, p.fecha_publicacion, u.nombre, u.apellido, 
-                       (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
-                       u.id AS usuario_id
-                FROM publicaciones p
-                JOIN usuarios u ON p.usuario_id = u.id
-                WHERE p.usuario_id IN (
-                    SELECT usuario2_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
-                    UNION
-                    SELECT usuario1_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
-                ) OR p.usuario_id = %s
-                ORDER BY p.fecha_publicacion DESC
-                LIMIT 20
-            """, (session['user_id'], session['user_id'], session['user_id']))
-            publicaciones = cursor.fetchall()
-            
-            # Obtener comentarios para cada publicación
-            for pub in publicaciones:
-                cursor.execute("""
-                    SELECT c.id, c.contenido, c.fecha_publicacion, 
-                        u.id AS usuario_id, u.nombre, u.apellido
-                    FROM comentarios c
-                    JOIN usuarios u ON c.usuario_id = u.id
-                    WHERE c.publicacion_id = %s
-                    ORDER BY c.fecha_publicacion
-                """, (pub['id'],))
-            
-            # Obtener amigos
-            cursor.execute("""
-                SELECT u.id, u.nombre, u.apellido 
-                FROM usuarios u
-                JOIN (
-                    SELECT usuario2_id AS amigo_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
-                    UNION
-                    SELECT usuario1_id AS amigo_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
-                ) a ON u.id = a.amigo_id
-                LIMIT 10
-            """, (session['user_id'], session['user_id']))
-            amigos = cursor.fetchall()
-            
-            # Contar mensajes no leídos
-            cursor.execute("""
-                SELECT COUNT(*) FROM mensajes 
-                WHERE receptor_id = %s AND leido = FALSE
-            """, (session['user_id'],))
-            result = cursor.fetchone()
-            unread_count = result['COUNT(*)'] if result else 0   
-
-        return render_template('index.html', 
-                            usuario=usuario, 
-                            publicaciones=publicaciones,
-                            amigos=amigos,
-                            unread_count=unread_count)
-            
-    except mysql.connector.Error as err:
-        flash('Error de base de datos. Por favor intenta nuevamente.', 'error')
-        print(f"Database error: {err}")
-        return redirect(url_for('login'))
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Obtener información del usuario
+    cursor.execute("SELECT * FROM usuarios WHERE id = %s", (session['user_id'],))
+    usuario = cursor.fetchone()
+    
+    # Obtener publicaciones del muro
+    cursor.execute("""
+        SELECT p.id, p.contenido, p.fecha_publicacion, u.nombre, u.apellido, 
+               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
+               u.id AS usuario_id,
+               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id AND usuario_id = %s) AS liked
+        FROM publicaciones p
+        JOIN usuarios u ON p.usuario_id = u.id
+        WHERE p.usuario_id IN (
+            SELECT usuario2_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
+            UNION
+            SELECT usuario1_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
+        ) OR p.usuario_id = %s
+        ORDER BY p.fecha_publicacion DESC
+        LIMIT 20
+    """, (session['user_id'], session['user_id'], session['user_id'], session['user_id']))
+    publicaciones = cursor.fetchall()
+    
+    # Obtener comentarios para cada publicación
+    for pub in publicaciones:
+        cursor.execute("""
+            SELECT c.id, c.contenido, c.fecha_publicacion, u.nombre, u.apellido, u.id AS usuario_id
+            FROM comentarios c
+            JOIN usuarios u ON c.usuario_id = u.id
+            WHERE c.publicacion_id = %s
+            ORDER BY c.fecha_publicacion
+        """, (pub['id'],))
+        pub['comentarios'] = cursor.fetchall()
+    
+    # Obtener amigos
+    cursor.execute("""
+        SELECT u.id, u.nombre, u.apellido 
+        FROM usuarios u
+        JOIN (
+            SELECT usuario2_id AS amigo_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
+            UNION
+            SELECT usuario1_id AS amigo_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
+        ) a ON u.id = a.amigo_id
+        LIMIT 10
+    """, (session['user_id'], session['user_id']))
+    amigos = cursor.fetchall()
+    
+    # Obtener solicitudes de amistad pendientes
+    cursor.execute("""
+        SELECT u.id, u.nombre, u.apellido 
+        FROM usuarios u
+        JOIN amistades a ON u.id = a.usuario1_id
+        WHERE a.usuario2_id = %s AND a.estado = 'pendiente'
+    """, (session['user_id'],))
+    solicitudes = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    
+    return render_template('index.html', 
+                         usuario=usuario, 
+                         publicaciones=publicaciones,
+                         amigos=amigos,
+                         solicitudes=solicitudes)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
