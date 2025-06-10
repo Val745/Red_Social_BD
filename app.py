@@ -322,19 +322,31 @@ def mensajes():
     
     try:
         with get_db_cursor() as cursor:
+            # Get total unread count first
+            cursor.execute("""
+                SELECT COUNT(*) AS unread_count 
+                FROM mensajes 
+                WHERE receptor_id = %s AND leido = FALSE
+            """, (session['user_id'],))
+            unread_result = cursor.fetchone()
+            unread_count = unread_result['unread_count'] if unread_result else 0
+
             # Get conversations
             cursor.execute("""
-                SELECT u.id, u.nombre, u.apellido, 
-                       (SELECT contenido FROM mensajes 
-                        WHERE (emisor_id = %s AND receptor_id = u.id) 
-                           OR (emisor_id = u.id AND receptor_id = %s)
-                        ORDER BY fecha_envio DESC LIMIT 1) AS ultimo_mensaje,
-                       (SELECT fecha_envio FROM mensajes 
-                        WHERE (emisor_id = %s AND receptor_id = u.id) 
-                           OR (emisor_id = u.id AND receptor_id = %s)
-                        ORDER BY fecha_envio DESC LIMIT 1) AS fecha_ultimo_mensaje,
-                       (SELECT COUNT(*) FROM mensajes 
-                        WHERE receptor_id = %s AND emisor_id = u.id AND leido = FALSE) AS no_leidos
+                SELECT 
+                    u.id, 
+                    u.nombre, 
+                    u.apellido,
+                    (SELECT contenido FROM mensajes 
+                     WHERE (emisor_id = %s AND receptor_id = u.id) 
+                        OR (emisor_id = u.id AND receptor_id = %s)
+                     ORDER BY fecha_envio DESC LIMIT 1) AS ultimo_mensaje,
+                    (SELECT fecha_envio FROM mensajes 
+                     WHERE (emisor_id = %s AND receptor_id = u.id) 
+                        OR (emisor_id = u.id AND receptor_id = %s)
+                     ORDER BY fecha_envio DESC LIMIT 1) AS fecha_ultimo_mensaje,
+                    (SELECT COUNT(*) FROM mensajes 
+                     WHERE receptor_id = %s AND emisor_id = u.id AND leido = FALSE) AS no_leidos
                 FROM usuarios u
                 WHERE u.id IN (
                     SELECT emisor_id FROM mensajes WHERE receptor_id = %s
@@ -342,84 +354,152 @@ def mensajes():
                     SELECT receptor_id FROM mensajes WHERE emisor_id = %s
                 )
                 ORDER BY fecha_ultimo_mensaje DESC
-            """, (session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id'], session['user_id']))
+            """, (
+                session['user_id'], session['user_id'],
+                session['user_id'], session['user_id'],
+                session['user_id'],
+                session['user_id'], session['user_id']
+            ))
             
             conversaciones = cursor.fetchall()
-            
-            # Get total unread count for the current user
-            cursor.execute("""
-                SELECT COUNT(*) AS unread_count FROM mensajes 
-                WHERE receptor_id = %s AND leido = FALSE
-            """, (session['user_id'],))
-            unread_count = cursor.fetchone()['unread_count']
-            
+
         return render_template('mensajes.html', 
                             conversaciones=conversaciones,
                             unread_count=unread_count)
             
     except Exception as e:
-        flash('Error loading messages', 'error')
-        print(f"Messages error: {e}")
+        print(f"Database error in mensajes(): {str(e)}")
+        flash('Error loading messages. Please try again later.', 'error')
         return redirect(url_for('index'))
+
+@app.context_processor
+def inject_common_variables():
+    common_vars = {}
+    if 'user_id' in session:
+        try:
+            with get_db_cursor() as cursor:
+                # Unread messages count
+                cursor.execute("""
+                    SELECT COUNT(*) AS unread_count 
+                    FROM mensajes 
+                    WHERE receptor_id = %s AND leido = FALSE
+                """, (session['user_id'],))
+                msg_result = cursor.fetchone()
+                common_vars['unread_count'] = msg_result['unread_count'] if msg_result else 0
+
+                # Unread notifications count
+                cursor.execute("""
+                    SELECT COUNT(*) AS unread_notifs 
+                    FROM notificaciones 
+                    WHERE usuario_id = %s AND leida = FALSE
+                """, (session['user_id'],))
+                notif_result = cursor.fetchone()
+                common_vars['num_notificaciones_no_leidas'] = notif_result['unread_notifs'] if notif_result else 0
+
+        except Exception as e:
+            print(f"Context processor error: {str(e)}")
+            common_vars['unread_count'] = 0
+            common_vars['num_notificaciones_no_leidas'] = 0
+    else:
+        common_vars['unread_count'] = 0
+        common_vars['num_notificaciones_no_leidas'] = 0
     
+    return common_vars
+ 
 @app.route('/mensajes/<int:usuario_id>', methods=['GET', 'POST'])
 def conversacion(usuario_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Obtener información del otro usuario
-    cursor.execute("SELECT id, nombre, apellido FROM usuarios WHERE id = %s", (usuario_id,))
-    otro_usuario = cursor.fetchone()
-    
-    if not otro_usuario:
-        flash('Usuario no encontrado', 'error')
+    try:
+        with get_db_cursor() as cursor:
+            # Obtener información del otro usuario
+            cursor.execute("""
+                SELECT id, nombre, apellido 
+                FROM usuarios 
+                WHERE id = %s
+            """, (usuario_id,))
+            otro_usuario = cursor.fetchone()
+            
+            if not otro_usuario:
+                flash('Usuario no encontrado', 'error')
+                return redirect(url_for('mensajes'))
+            
+            # Si es un POST, enviar mensaje
+            if request.method == 'POST':
+                contenido = request.form.get('contenido', '').strip()
+                if contenido:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO mensajes (emisor_id, receptor_id, contenido)
+                            VALUES (%s, %s, %s)
+                        """, (session['user_id'], usuario_id, contenido))
+                        
+                        # Crear notificación para el receptor
+                        cursor.execute("""
+                            INSERT INTO notificaciones (usuario_id, tipo, contenido)
+                            VALUES (%s, 'mensaje', %s)
+                        """, (usuario_id, f"Nuevo mensaje de {session['nombre']}"))
+                        
+                        flash('Mensaje enviado!', 'success')
+                    except Exception as e:
+                        flash('Error al enviar el mensaje', 'error')
+                        print(f"Error al enviar mensaje: {e}")
+            
+            # Marcar mensajes como leídos
+            cursor.execute("""
+                UPDATE mensajes 
+                SET leido = TRUE 
+                WHERE emisor_id = %s AND receptor_id = %s AND leido = FALSE
+            """, (usuario_id, session['user_id']))
+            
+            # Obtener la conversación completa
+            cursor.execute("""
+                SELECT 
+                    m.id,
+                    m.contenido,
+                    m.fecha_envio,
+                    m.leido,
+                    m.emisor_id,
+                    u.nombre,
+                    u.apellido,
+                    CASE WHEN m.emisor_id = %s THEN TRUE ELSE FALSE END AS es_emisor
+                FROM mensajes m
+                JOIN usuarios u ON m.emisor_id = u.id
+                WHERE (m.emisor_id = %s AND m.receptor_id = %s)
+                   OR (m.emisor_id = %s AND m.receptor_id = %s)
+                ORDER BY m.fecha_envio
+            """, (session['user_id'], session['user_id'], usuario_id, usuario_id, session['user_id']))
+            
+            mensajes = cursor.fetchall()
+            
+            # Obtener conteo de mensajes no leídos para el menú
+            cursor.execute("""
+                SELECT COUNT(*) AS unread_count 
+                FROM mensajes 
+                WHERE receptor_id = %s AND leido = FALSE
+            """, (session['user_id'],))
+            unread_count = cursor.fetchone()['unread_count']
+            
+            # Obtener conteo de notificaciones no leídas
+            cursor.execute("""
+                SELECT COUNT(*) AS unread_notifs
+                FROM notificaciones
+                WHERE usuario_id = %s AND leida = FALSE
+            """, (session['user_id'],))
+            num_notificaciones_no_leidas = cursor.fetchone()['unread_notifs']
+            
+        return render_template('conversacion.html',
+                            otro_usuario=otro_usuario,
+                            mensajes=mensajes,
+                            unread_count=unread_count,
+                            num_notificaciones_no_leidas=num_notificaciones_no_leidas)
+            
+    except Exception as e:
+        print(f"Error en conversacion: {str(e)}")
+        flash('Error al cargar la conversación', 'error')
         return redirect(url_for('mensajes'))
     
-    # Si es un POST, enviar mensaje
-    if request.method == 'POST':
-        contenido = request.form.get('contenido', '').strip()
-        if contenido:
-            try:
-                cursor.execute("""
-                    INSERT INTO mensajes (emisor_id, receptor_id, contenido)
-                    VALUES (%s, %s, %s)
-                """, (session['user_id'], usuario_id, contenido))
-                conn.commit()
-                flash('Mensaje enviado!', 'success')
-            except Exception as e:
-                conn.rollback()
-                flash('Error al enviar el mensaje', 'error')
-                print(f"Error al enviar mensaje: {e}")
-    
-    # Marcar mensajes como leídos
-    cursor.execute("""
-        UPDATE mensajes SET leido = TRUE 
-        WHERE emisor_id = %s AND receptor_id = %s AND leido = FALSE
-    """, (usuario_id, session['user_id']))
-    conn.commit()
-    
-    # Obtener la conversación
-    cursor.execute("""
-        SELECT m.*, u.nombre, u.apellido 
-        FROM mensajes m
-        JOIN usuarios u ON m.emisor_id = u.id
-        WHERE (m.emisor_id = %s AND m.receptor_id = %s) 
-           OR (m.emisor_id = %s AND m.receptor_id = %s)
-        ORDER BY m.fecha_envio
-    """, (session['user_id'], usuario_id, usuario_id, session['user_id']))
-    
-    mensajes = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('conversacion.html', 
-                         otro_usuario=otro_usuario, 
-                         mensajes=mensajes)
-
 @app.route('/enviar_mensaje', methods=['POST'])
 def enviar_mensaje():
     if 'user_id' not in session:
