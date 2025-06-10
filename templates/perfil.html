@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Perfil de {{ perfil.nombre }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <img src="../static/img/pfp.jpg" class="rounded-circle mb-3" alt="Foto perfil">
+                <h3>{{ perfil.nombre }} {{ perfil.apellido }}</h3>
+                <p class="text-muted">{{ perfil.email }}</p>
+                
+                {% if perfil.id != session['user_id'] %}
+                    {% if estado_amistad == 'aceptada' %}
+                        <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='eliminar') }}" class="btn btn-danger">
+                            Eliminar amigo
+                        </a>
+                    {% elif estado_amistad == 'pendiente' %}
+                        {% if amistad.usuario1_id == session['user_id'] %}
+                            <button class="btn btn-secondary" disabled>Solicitud enviada</button>
+                        {% else %}
+                            <div class="d-grid gap-2">
+                                <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='aceptar') }}" class="btn btn-success">
+                                    Aceptar solicitud
+                                </a>
+                                <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='rechazar') }}" class="btn btn-danger">
+                                    Rechazar solicitud
+                                </a>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='enviar') }}" class="btn btn-primary">
+                            Agregar amigo
+                        </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Información</h5>
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item">
+                        <strong>Edad:</strong> {{ perfil.edad }} años
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Ubicación:</strong> {{ perfil.ubicacion or "No especificada" }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Amigos:</strong> {{ perfil.total_amigos }}
+                    </li>
+                    <li class="list-group-item">
+                        <strong>Publicaciones:</strong> {{ perfil.total_publicaciones }}
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Biografía</h5>
+                <p>{{ perfil.biografia or "Este usuario no ha escrito una biografía aún." }}</p>
+            </div>
+        </div>
+
+        <h4 class="mb-3">Publicaciones</h4>
+        
+        {% if publicaciones %}
+            {% for publicacion in publicaciones %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">{{ publicacion.fecha_publicacion.strftime('%d/%m/%Y %H:%M') }}</small>
+                    </div>
+                    <p class="card-text mt-2">{{ publicacion.contenido }}</p>
+                    
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <a href="{{ url_for('like', publicacion_id=publicacion.id) }}" class="btn btn-sm {% if publicacion.liked %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                                <i class="bi bi-heart{% if publicacion.liked %}-fill{% endif %}"></i> 
+                                Me gusta ({{ publicacion.likes }})
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="card">
+                <div class="card-body text-center">
+                    <p class="card-text">No hay publicaciones para mostrar</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

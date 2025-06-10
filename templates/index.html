@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <img src="../static/img/pfp.jpg" class="rounded-circle mb-3" alt="Foto perfil">
+                <h5>{{ usuario.nombre }} {{ usuario.apellido }}</h5>
+                <p class="text-muted">{{ usuario.email }}</p>
+                <a href="{{ url_for('ver_perfil', usuario_id=usuario.id) }}" class="btn btn-outline-primary btn-sm">
+                    Ver mi perfil
+                </a>
+            </div>
+        </div>
+
+        {% if solicitudes %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Solicitudes de amistad</h5>
+                <ul class="list-group list-group-flush">
+                    {% for solicitud in solicitudes %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ solicitud.nombre }} {{ solicitud.apellido }}
+                        <div>
+                            <a href="{{ url_for('gestion_amistad', amigo_id=solicitud.id, action='aceptar') }}" class="btn btn-success btn-sm">
+                                <i class="bi bi-check-lg"></i>
+                            </a>
+                            <a href="{{ url_for('gestion_amistad', amigo_id=solicitud.id, action='rechazar') }}" class="btn btn-danger btn-sm">
+                                <i class="bi bi-x-lg"></i>
+                            </a>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Amigos</h5>
+                <ul class="list-group list-group-flush">
+                    {% for amigo in amigos %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('ver_perfil', usuario_id=amigo.id) }}" class="text-decoration-none">
+                            {{ amigo.nombre }} {{ amigo.apellido }}
+                        </a>
+                        <a href="{{ url_for('gestion_amistad', amigo_id=amigo.id, action='eliminar') }}" class="btn btn-danger btn-sm">
+                            <i class="bi bi-person-dash"></i>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="list-group-item">No tienes amigos aún</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Crear publicación</h5>
+                <form method="POST" action="{{ url_for('publicar') }}">
+                    <div class="mb-3">
+                        <textarea class="form-control" name="contenido" rows="3" placeholder="¿Qué estás pensando?" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Publicar</button>
+                </form>
+            </div>
+        </div>
+
+        {% for publicacion in publicaciones %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <h5 class="card-title">
+                        <a href="{{ url_for('ver_perfil', usuario_id=publicacion.usuario_id) }}" class="text-decoration-none">
+                            {{ publicacion.nombre }} {{ publicacion.apellido }}
+                        </a>
+                    </h5>
+                    <small class="text-muted">{{ publicacion.fecha_publicacion.strftime('%d/%m/%Y %H:%M') }}</small>
+                </div>
+                <p class="card-text">{{ publicacion.contenido }}</p>
+                
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <a href="{{ url_for('like', publicacion_id=publicacion.id) }}" class="btn btn-sm {% if publicacion.liked %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                            <i class="bi bi-heart{% if publicacion.liked %}-fill{% endif %}"></i> 
+                            Me gusta ({{ publicacion.likes }})
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-footer bg-light">
+                <h6>Comentarios</h6>
+                {% for comentario in publicacion.comentarios %}
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <strong>
+                            <a href="{{ url_for('ver_perfil', usuario_id=comentario['usuario_id']) }}" class="text-decoration-none">
+                            </a>
+                        </strong>
+                        <small class="text-muted">{{ comentario.fecha_publicacion.strftime('%d/%m/%Y %H:%M') }}</small>
+                    </div>
+                    <p>{{ comentario.contenido }}</p>
+                </div>
+                {% endfor %}
+                
+                <form method="POST" action="{{ url_for('comentar') }}">
+                    <input type="hidden" name="publicacion_id" value="{{ publicacion.id }}">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" name="contenido" placeholder="Escribe un comentario..." required>
+                        <button class="btn btn-outline-secondary" type="submit">Comentar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="card-title">No hay publicaciones</h5>
+                <p class="card-text">Sigue a más personas o crea tu primera publicación</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-md-3">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Eventos</h5>
+                <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Reunión de programadores</h6>
+                            <small>15/06</small>
+                        </div>
+                        <p class="mb-1">Próximo sábado en el parque central</p>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Taller de bases de datos</h6>
+                            <small>20/06</small>
+                        </div>
+                        <p class="mb-1">Aprende sobre modelado relacional</p>
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Sugerencias</h5>
+                <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action">
+                        Únete al grupo de desarrollo web
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                        Conoce a otros estudiantes
+                    </a>
+                    <a href="{{ url_for('buscar') }}" class="list-group-item list-group-item-action">
+                        Buscar más amigos
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

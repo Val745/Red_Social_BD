@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Buscar amigos{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Buscar amigos</h5>
+                <form method="GET" action="{{ url_for('buscar') }}">
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Buscar por nombre o apellido">
+                        <button class="btn btn-primary" type="submit">Buscar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if resultados %}
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Resultados de búsqueda</h5>
+                <div class="list-group">
+                    {% for usuario in resultados %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">{{ usuario.nombre }} {{ usuario.apellido }}</h6>
+                            <small class="text-muted">{{ usuario.email }}</small>
+                        </div>
+                        <a href="{{ url_for('ver_perfil', usuario_id=usuario.id) }}" class="btn btn-outline-primary btn-sm">
+                            Ver perfil
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% elif query %}
+        <div class="alert alert-info">
+            No se encontraron resultados para "{{ query }}"
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

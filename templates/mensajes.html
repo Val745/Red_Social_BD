@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Mensajes{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Tus mensajes</h5>
+                <a href="{{ url_for('buscar') }}" class="btn btn-primary btn-sm">
+                    <i class="bi bi-plus"></i> Nuevo mensaje
+                </a>
+            </div>
+            
+            <div class="list-group list-group-flush">
+                {% for conversacion in conversaciones %}
+                <a href="{{ url_for('conversacion', usuario_id=conversacion.id) }}" 
+                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">{{ conversacion.nombre }} {{ conversacion.apellido }}</h6>
+                        <p class="mb-1 text-muted">{{ conversacion.ultimo_mensaje|truncate(50) }}</p>
+                        <small>{{ conversacion.fecha_ultimo_mensaje.strftime('%d/%m/%Y %H:%M') }}</small>
+                    </div>
+                    {% if conversacion.no_leidos > 0 %}
+                    <span class="badge bg-primary rounded-pill">{{ conversacion.no_leidos }}</span>
+                    {% endif %}
+                </a>
+                {% else %}
+                <div class="list-group-item text-center py-4">
+                    <p class="text-muted">No tienes mensajes aún</p>
+                    <a href="{{ url_for('buscar') }}" class="btn btn-primary">
+                        <i class="bi bi-plus"></i> Enviar tu primer mensaje
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

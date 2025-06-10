@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Conversación con {{ otro_usuario.nombre }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Conversación con {{ otro_usuario.nombre }} {{ otro_usuario.apellido }}</h5>
+                <a href="{{ url_for('mensajes') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver
+                </a>
+            </div>
+            
+            <div class="card-body" style="height: 400px; overflow-y: auto;">
+                {% for mensaje in mensajes %}
+                <div class="mb-3 {% if mensaje.emisor_id == session['user_id'] %}text-end{% endif %}">
+                    <div class="d-flex {% if mensaje.emisor_id == session['user_id'] %}justify-content-end{% endif %}">
+                        <div class="{% if mensaje.emisor_id == session['user_id'] %}bg-primary text-white{% else %}bg-light{% endif %} 
+                                    p-3 rounded-3" style="max-width: 70%;">
+                            <p class="mb-0">{{ mensaje.contenido }}</p>
+                        </div>
+                    </div>
+                    <small class="text-muted">
+                        {{ mensaje.fecha_envio.strftime('%d/%m/%Y %H:%M') }}
+                        {% if mensaje.emisor_id == session['user_id'] and mensaje.leido %}
+                        <i class="bi bi-check-all"></i>
+                        {% elif mensaje.emisor_id == session['user_id'] %}
+                        <i class="bi bi-check"></i>
+                        {% endif %}
+                    </small>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="card-footer">
+                <form method="POST" action="{{ url_for('conversacion', usuario_id=otro_usuario.id) }}">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="contenido" placeholder="Escribe un mensaje..." required>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-send"></i> Enviar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
