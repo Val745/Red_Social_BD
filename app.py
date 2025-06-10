@@ -15,7 +15,34 @@ db_config = {
 }
 
 def get_db_connection():
-    return mysql.connector.connect(**db_config)
+    try:
+        conn = mysql.connector.connect(**db_config)
+        return conn
+    except mysql.connector.Error as err:
+        print(f"Error de conexión: {err}")
+        raise  # Re-lanza la excepción para manejarla en el llamador
+
+from contextlib import contextmanager
+
+@contextmanager
+def get_db_cursor():
+    conn = None
+    cursor = None
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+        yield cursor
+        conn.commit()
+    except mysql.connector.Error as err:
+        print(f"Database error: {err}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 # Rutas de la aplicación
 @app.route('/')
@@ -23,72 +50,77 @@ def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Obtener información del usuario
-    cursor.execute("SELECT * FROM usuarios WHERE id = %s", (session['user_id'],))
-    usuario = cursor.fetchone()
-    
-    # Obtener publicaciones del muro
-    cursor.execute("""
-        SELECT p.id, p.contenido, p.fecha_publicacion, u.nombre, u.apellido, 
-               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
-               u.id AS usuario_id,
-               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id AND usuario_id = %s) AS liked
-        FROM publicaciones p
-        JOIN usuarios u ON p.usuario_id = u.id
-        WHERE p.usuario_id IN (
-            SELECT usuario2_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
-            UNION
-            SELECT usuario1_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
-        ) OR p.usuario_id = %s
-        ORDER BY p.fecha_publicacion DESC
-        LIMIT 20
-    """, (session['user_id'], session['user_id'], session['user_id'], session['user_id']))
-    publicaciones = cursor.fetchall()
-    
-    # Obtener comentarios para cada publicación
-    for pub in publicaciones:
-        cursor.execute("""
-            SELECT c.id, c.contenido, c.fecha_publicacion, u.nombre, u.apellido, u.id AS usuario_id
-            FROM comentarios c
-            JOIN usuarios u ON c.usuario_id = u.id
-            WHERE c.publicacion_id = %s
-            ORDER BY c.fecha_publicacion
-        """, (pub['id'],))
-        pub['comentarios'] = cursor.fetchall()
-    
-    # Obtener amigos
-    cursor.execute("""
-        SELECT u.id, u.nombre, u.apellido 
-        FROM usuarios u
-        JOIN (
-            SELECT usuario2_id AS amigo_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
-            UNION
-            SELECT usuario1_id AS amigo_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
-        ) a ON u.id = a.amigo_id
-        LIMIT 10
-    """, (session['user_id'], session['user_id']))
-    amigos = cursor.fetchall()
-    
-    # Obtener solicitudes de amistad pendientes
-    cursor.execute("""
-        SELECT u.id, u.nombre, u.apellido 
-        FROM usuarios u
-        JOIN amistades a ON u.id = a.usuario1_id
-        WHERE a.usuario2_id = %s AND a.estado = 'pendiente'
-    """, (session['user_id'],))
-    solicitudes = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('index.html', 
-                         usuario=usuario, 
-                         publicaciones=publicaciones,
-                         amigos=amigos,
-                         solicitudes=solicitudes)
+    try:
+        with get_db_cursor() as cursor:
+            # Obtener información del usuario
+            cursor.execute("SELECT * FROM usuarios WHERE id = %s", (session['user_id'],))
+            usuario = cursor.fetchone()
+            
+            # Obtener publicaciones del muro
+            cursor.execute("""
+                SELECT p.id, p.contenido, p.fecha_publicacion, u.nombre, u.apellido, 
+                       (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
+                       u.id AS usuario_id
+                FROM publicaciones p
+                JOIN usuarios u ON p.usuario_id = u.id
+                WHERE p.usuario_id IN (
+                    SELECT usuario2_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
+                    UNION
+                    SELECT usuario1_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
+                ) OR p.usuario_id = %s
+                ORDER BY p.fecha_publicacion DESC
+                LIMIT 20
+            """, (session['user_id'], session['user_id'], session['user_id']))
+            publicaciones = cursor.fetchall()
+            
+            # Obtener comentarios para cada publicación (versión corregida)
+            for pub in publicaciones:
+                cursor.execute("""
+                    SELECT c.id, c.contenido, c.fecha_publicacion, 
+                           u.id AS usuario_id, u.nombre, u.apellido
+                    FROM comentarios c
+                    JOIN usuarios u ON c.usuario_id = u.id
+                    WHERE c.publicacion_id = %s
+                    ORDER BY c.fecha_publicacion
+                """, (pub['id'],))
+                pub['comentarios'] = cursor.fetchall()
+
+            # Obtener amigos
+            cursor.execute("""
+                SELECT u.id, u.nombre, u.apellido 
+                FROM usuarios u
+                JOIN (
+                    SELECT usuario2_id AS amigo_id FROM amistades WHERE usuario1_id = %s AND estado = 'aceptada'
+                    UNION
+                    SELECT usuario1_id AS amigo_id FROM amistades WHERE usuario2_id = %s AND estado = 'aceptada'
+                ) a ON u.id = a.amigo_id
+                LIMIT 10
+            """, (session['user_id'], session['user_id']))
+            amigos = cursor.fetchall()
+            
+            # Contar mensajes no leídos (versión corregida)
+            cursor.execute("""
+                SELECT COUNT(*) AS unread_count FROM mensajes 
+                WHERE receptor_id = %s AND leido = FALSE
+            """, (session['user_id'],))
+            result = cursor.fetchone()
+            unread_count = result['unread_count'] if result else 0
+            
+            print("Estructura de comentarios:")
+            for pub in publicaciones:
+                print(f"Publicación {pub['id']} tiene {len(pub['comentarios'])} comentarios")
+                for comentario in pub['comentarios']:
+                    print(comentario)  # Verifica las claves disponibles
+        return render_template('index.html', 
+                            usuario=usuario, 
+                            publicaciones=publicaciones,
+                            amigos=amigos,
+                            unread_count=unread_count)
+            
+    except mysql.connector.Error as err:
+        flash('Error de base de datos. Por favor intenta nuevamente.', 'error')
+        print(f"Database error: {err}")
+        return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -99,19 +131,37 @@ def login():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        cursor.execute("SELECT * FROM usuarios WHERE email = %s", (email,))
-        usuario = cursor.fetchone()
-        
-        cursor.close()
-        conn.close()
-        
-        if usuario and check_password_hash(usuario['password_hash'], password):
-            session['user_id'] = usuario['id']
-            session['nombre'] = usuario['nombre']
-            flash('Has iniciado sesión correctamente', 'success')
-            return redirect(url_for('index'))
-        else:
-            flash('Credenciales incorrectas', 'error')
+        try:
+            # Buscar usuario por email
+            cursor.execute("SELECT * FROM usuarios WHERE email = %s", (email,))
+            usuario = cursor.fetchone()
+            
+            if usuario:
+                # Verificar contraseña (usando SHA2 que es lo que usaste en los inserts)
+                cursor.execute("SELECT SHA2(%s, 256) AS hash", (password,))
+                password_hash = cursor.fetchone()['hash']
+                
+                if usuario['password_hash'] == password_hash:
+                    session['user_id'] = usuario['id']
+                    session['nombre'] = usuario['nombre']
+                    
+                    # Actualizar último login
+                    cursor.execute("UPDATE usuarios SET ultimo_login = NOW() WHERE id = %s", (usuario['id'],))
+                    conn.commit()
+                    
+                    flash('Has iniciado sesión correctamente', 'success')
+                    return redirect(url_for('index'))
+                else:
+                    flash('Contraseña incorrecta', 'error')
+            else:
+                flash('Usuario no encontrado', 'error')
+                
+        except Exception as e:
+            print(f"Error en login: {e}")
+            flash('Error al iniciar sesión', 'error')
+        finally:
+            cursor.close()
+            conn.close()
     
     return render_template('login.html')
 
@@ -243,7 +293,6 @@ def like(publicacion_id):
     
     return redirect(url_for('index'))
 
-# Añade esto junto con las otras rutas en app.py
 
 @app.route('/mensajes')
 def mensajes():
@@ -290,14 +339,6 @@ def conversacion(usuario_id):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    if request.method == 'POST':
-        contenido = request.form['contenido']
-        cursor.execute("""
-            INSERT INTO mensajes (emisor_id, receptor_id, contenido)
-            VALUES (%s, %s, %s)
-        """, (session['user_id'], usuario_id, contenido))
-        conn.commit()
-    
     # Obtener información del otro usuario
     cursor.execute("SELECT id, nombre, apellido FROM usuarios WHERE id = %s", (usuario_id,))
     otro_usuario = cursor.fetchone()
@@ -305,6 +346,22 @@ def conversacion(usuario_id):
     if not otro_usuario:
         flash('Usuario no encontrado', 'error')
         return redirect(url_for('mensajes'))
+    
+    # Si es un POST, enviar mensaje
+    if request.method == 'POST':
+        contenido = request.form.get('contenido', '').strip()
+        if contenido:
+            try:
+                cursor.execute("""
+                    INSERT INTO mensajes (emisor_id, receptor_id, contenido)
+                    VALUES (%s, %s, %s)
+                """, (session['user_id'], usuario_id, contenido))
+                conn.commit()
+                flash('Mensaje enviado!', 'success')
+            except Exception as e:
+                conn.rollback()
+                flash('Error al enviar el mensaje', 'error')
+                print(f"Error al enviar mensaje: {e}")
     
     # Marcar mensajes como leídos
     cursor.execute("""
@@ -337,28 +394,34 @@ def enviar_mensaje():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    usuario_id = request.form['usuario_id']
-    contenido = request.form['contenido']
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
     try:
-        cursor.execute("""
-            INSERT INTO mensajes (emisor_id, receptor_id, contenido)
-            VALUES (%s, %s, %s)
-        """, (session['user_id'], usuario_id, contenido))
-        conn.commit()
-        flash('Mensaje enviado!', 'success')
+        receptor_id = int(request.form['receptor_id'])
+        contenido = request.form['contenido'].strip()
+        
+        if not contenido:
+            flash('El mensaje no puede estar vacío', 'error')
+            return redirect(url_for('conversacion', usuario_id=receptor_id))
+        
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO mensajes (emisor_id, receptor_id, contenido)
+                VALUES (%s, %s, %s)
+            """, (session['user_id'], receptor_id, contenido))
+            
+            # Crear notificación
+            cursor.execute("""
+                INSERT INTO notificaciones (usuario_id, tipo, contenido)
+                VALUES (%s, 'mensaje', %s)
+            """, (receptor_id, f"Nuevo mensaje de {session['nombre']}"))
+            
+        flash('Mensaje enviado correctamente', 'success')
+        return redirect(url_for('conversacion', usuario_id=receptor_id))
+        
     except Exception as e:
         flash('Error al enviar el mensaje', 'error')
-        print(f"Error: {e}")
-    finally:
-        cursor.close()
-        conn.close()
+        print(f"Error al enviar mensaje: {e}")
+        return redirect(url_for('mensajes'))
     
-    return redirect(url_for('conversacion', usuario_id=usuario_id))
-
 @app.route('/amistad/<int:amigo_id>/<action>')
 def gestion_amistad(amigo_id, action):
     if 'user_id' not in session:
@@ -414,7 +477,68 @@ def gestion_amistad(amigo_id, action):
         conn.close()
     
     return redirect(url_for('index'))
-
+@app.route('/manejar_amistad', methods=['POST'])
+def manejar_amistad():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        amigo_id = int(request.form['amigo_id'])
+        accion = request.form['accion']
+        
+        with get_db_cursor() as cursor:
+            # Asegurarse de que usuario1_id es siempre el menor
+            usuario1_id, usuario2_id = sorted([session['user_id'], amigo_id])
+            
+            if accion == 'enviar':
+                cursor.execute("""
+                    INSERT INTO amistades (usuario1_id, usuario2_id, estado)
+                    VALUES (%s, %s, 'pendiente')
+                    ON DUPLICATE KEY UPDATE estado='pendiente'
+                """, (usuario1_id, usuario2_id))
+                
+                # Crear notificación
+                cursor.execute("""
+                    SELECT nombre FROM usuarios WHERE id = %s
+                """, (session['user_id'],))
+                nombre = cursor.fetchone()['nombre']
+                
+                cursor.execute("""
+                    INSERT INTO notificaciones (usuario_id, tipo, contenido)
+                    VALUES (%s, 'amistad', %s)
+                """, (amigo_id, f"Solicitud de amistad de {nombre}"))
+                
+                flash('Solicitud enviada', 'success')
+                
+            elif accion == 'aceptar':
+                cursor.execute("""
+                    UPDATE amistades 
+                    SET estado = 'aceptada'
+                    WHERE usuario1_id = %s AND usuario2_id = %s
+                """, (usuario1_id, usuario2_id))
+                flash('Solicitud aceptada', 'success')
+                
+            elif accion == 'rechazar':
+                cursor.execute("""
+                    DELETE FROM amistades
+                    WHERE usuario1_id = %s AND usuario2_id = %s
+                """, (usuario1_id, usuario2_id))
+                flash('Solicitud rechazada', 'info')
+                
+            elif accion == 'cancelar':
+                cursor.execute("""
+                    DELETE FROM amistades
+                    WHERE usuario1_id = %s AND usuario2_id = %s
+                """, (usuario1_id, usuario2_id))
+                flash('Solicitud cancelada', 'info')
+                
+        return redirect(request.referrer or url_for('index'))
+        
+    except Exception as e:
+        flash('Error al procesar la solicitud', 'error')
+        print(f"Error en manejar_amistad: {e}")
+        return redirect(url_for('index'))
+    
 @app.route('/buscar', methods=['GET'])
 def buscar():
     if 'user_id' not in session:
@@ -444,56 +568,92 @@ def ver_perfil(usuario_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+
+    try:
+        with get_db_cursor() as cursor:
+            # Obtener información del perfil
+            cursor.execute("""
+                SELECT u.*, 
+                       TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) AS edad,
+                       (SELECT COUNT(*) FROM publicaciones WHERE usuario_id = u.id) AS total_publicaciones,
+                       (SELECT COUNT(*) FROM (
+                           SELECT usuario2_id FROM amistades WHERE usuario1_id = u.id AND estado = 'aceptada'
+                           UNION
+                           SELECT usuario1_id FROM amistades WHERE usuario2_id = u.id AND estado = 'aceptada'
+                       ) AS amigos) AS total_amigos
+                FROM usuarios u
+                WHERE u.id = %s
+            """, (usuario_id,))
+            perfil = cursor.fetchone()
+
+            if not perfil:
+                flash('Usuario no encontrado', 'error')
+                return redirect(url_for('index'))
+
+            # Obtener información completa de la amistad (esto es nuevo)
+            cursor.execute("""
+                SELECT * FROM amistades 
+                WHERE (usuario1_id = %s AND usuario2_id = %s) 
+                   OR (usuario1_id = %s AND usuario2_id = %s)
+            """, (session['user_id'], usuario_id, usuario_id, session['user_id']))
+            
+            amistad = cursor.fetchone()
+            estado_amistad = amistad['estado'] if amistad else None
+
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # Obtener información del perfil
+            cursor.execute("""
+                SELECT u.*, 
+                    TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) AS edad,
+                    (SELECT COUNT(*) FROM publicaciones WHERE usuario_id = u.id) AS total_publicaciones,
+                    (SELECT COUNT(*) FROM (
+                        SELECT usuario2_id FROM amistades WHERE usuario1_id = u.id AND estado = 'aceptada'
+                        UNION
+                        SELECT usuario1_id FROM amistades WHERE usuario2_id = u.id AND estado = 'aceptada'
+                    ) AS amigos) AS total_amigos
+                FROM usuarios u
+                WHERE u.id = %s
+            """, (usuario_id,))
+            perfil = cursor.fetchone()
+            
+            if not perfil:
+                flash('Usuario no encontrado', 'error')
+                return redirect(url_for('index'))
+            
+            # Verificar estado de amistad
+            cursor.execute("""
+                SELECT estado FROM amistades 
+                WHERE (usuario1_id = %s AND usuario2_id = %s) OR (usuario1_id = %s AND usuario2_id = %s)
+            """, (session['user_id'], usuario_id, usuario_id, session['user_id']))
+            
+            amistad = cursor.fetchone()
+            estado_amistad = amistad['estado'] if amistad else None
+            
+            # Obtener publicaciones del perfil
+            cursor.execute("""
+                SELECT p.id, p.contenido, p.fecha_publicacion, 
+                    (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
+                    (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id AND usuario_id = %s) AS liked
+                FROM publicaciones p
+                WHERE p.usuario_id = %s
+                ORDER BY p.fecha_publicacion DESC
+                LIMIT 10
+            """, (session['user_id'], usuario_id))
+            publicaciones = cursor.fetchall()
+            
+            cursor.close()
+            conn.close()
     
-    # Obtener información del perfil
-    cursor.execute("""
-        SELECT u.*, 
-               TIMESTAMPDIFF(YEAR, u.fecha_nacimiento, CURDATE()) AS edad,
-               (SELECT COUNT(*) FROM publicaciones WHERE usuario_id = u.id) AS total_publicaciones,
-               (SELECT COUNT(*) FROM (
-                   SELECT usuario2_id FROM amistades WHERE usuario1_id = u.id AND estado = 'aceptada'
-                   UNION
-                   SELECT usuario1_id FROM amistades WHERE usuario2_id = u.id AND estado = 'aceptada'
-               ) AS amigos) AS total_amigos
-        FROM usuarios u
-        WHERE u.id = %s
-    """, (usuario_id,))
-    perfil = cursor.fetchone()
-    
-    if not perfil:
-        flash('Usuario no encontrado', 'error')
+            return render_template('perfil.html', 
+                                perfil=perfil, 
+                                publicaciones=publicaciones,
+                                estado_amistad=estado_amistad)
+    except Exception as e:
+        flash('Error al cargar el perfil', 'error')
+        print(f"Error: {e}")
         return redirect(url_for('index'))
-    
-    # Verificar estado de amistad
-    cursor.execute("""
-        SELECT estado FROM amistades 
-        WHERE (usuario1_id = %s AND usuario2_id = %s) OR (usuario1_id = %s AND usuario2_id = %s)
-    """, (session['user_id'], usuario_id, usuario_id, session['user_id']))
-    
-    amistad = cursor.fetchone()
-    estado_amistad = amistad['estado'] if amistad else None
-    
-    # Obtener publicaciones del perfil
-    cursor.execute("""
-        SELECT p.id, p.contenido, p.fecha_publicacion, 
-               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id) AS likes,
-               (SELECT COUNT(*) FROM me_gusta WHERE publicacion_id = p.id AND usuario_id = %s) AS liked
-        FROM publicaciones p
-        WHERE p.usuario_id = %s
-        ORDER BY p.fecha_publicacion DESC
-        LIMIT 10
-    """, (session['user_id'], usuario_id))
-    publicaciones = cursor.fetchall()
-    
-    cursor.close()
-    conn.close()
-    
-    return render_template('perfil.html', 
-                         perfil=perfil, 
-                         publicaciones=publicaciones,
-                         estado_amistad=estado_amistad)
 
 @app.route('/logout')
 def logout():

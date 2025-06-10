@@ -11,30 +11,49 @@
                 <h3>{{ perfil.nombre }} {{ perfil.apellido }}</h3>
                 <p class="text-muted">{{ perfil.email }}</p>
                 
-                {% if perfil.id != session['user_id'] %}
-                    {% if estado_amistad == 'aceptada' %}
-                        <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='eliminar') }}" class="btn btn-danger">
-                            Eliminar amigo
+                <div class="card-footer">
+                {% if estado_amistad == 'aceptada' %}
+                    <form method="POST" action="{{ url_for('manejar_amistad') }}">
+                        <input type="hidden" name="amigo_id" value="{{ perfil.id }}">
+                        <input type="hidden" name="accion" value="eliminar">
+                        <button type="submit" class="btn btn-danger">Eliminar amigo</button>
+                    </form>
+                    <div class="mt-3">
+                        <a href="{{ url_for('conversacion', usuario_id=perfil.id) }}" class="btn btn-info">
+                            <i class="bi bi-envelope"></i> Enviar mensaje
                         </a>
-                    {% elif estado_amistad == 'pendiente' %}
-                        {% if amistad.usuario1_id == session['user_id'] %}
-                            <button class="btn btn-secondary" disabled>Solicitud enviada</button>
-                        {% else %}
-                            <div class="d-grid gap-2">
-                                <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='aceptar') }}" class="btn btn-success">
-                                    Aceptar solicitud
-                                </a>
-                                <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='rechazar') }}" class="btn btn-danger">
-                                    Rechazar solicitud
-                                </a>
-                            </div>
-                        {% endif %}
+                    </div>
+                {% elif estado_amistad == 'pendiente' %}
+                    {% if amistad and amistad['usuario1_id'] == session['user_id'] %}
+                        <p class="text-muted">Esperando que acepten tu solicitud</p>
+                        <form method="POST" action="{{ url_for('manejar_amistad') }}">
+                            <input type="hidden" name="amigo_id" value="{{ perfil.id }}">
+                            <input type="hidden" name="accion" value="cancelar">
+                            <button type="submit" class="btn btn-warning">Cancelar solicitud</button>
+                        </form>
                     {% else %}
-                        <a href="{{ url_for('gestion_amistad', amigo_id=perfil.id, action='enviar') }}" class="btn btn-primary">
-                            Agregar amigo
-                        </a>
+                        <div class="btn-group">
+                            <form method="POST" action="{{ url_for('manejar_amistad') }}" class="me-2">
+                                <input type="hidden" name="amigo_id" value="{{ perfil.id }}">
+                                <input type="hidden" name="accion" value="aceptar">
+                                <button type="submit" class="btn btn-success">Aceptar solicitud</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('manejar_amistad') }}">
+                                <input type="hidden" name="amigo_id" value="{{ perfil.id }}">
+                                <input type="hidden" name="accion" value="rechazar">
+                                <button type="submit" class="btn btn-danger">Rechazar</button>
+                            </form>
+                        </div>                    
                     {% endif %}
+                
+                {% elif session['user_id'] != perfil.id %}
+                    <form method="POST" action="{{ url_for('manejar_amistad') }}">
+                        <input type="hidden" name="amigo_id" value="{{ perfil.id }}">
+                        <input type="hidden" name="accion" value="enviar">
+                        <button type="submit" class="btn btn-primary">Agregar amigo</button>
+                    </form>
                 {% endif %}
+            </div>
             </div>
         </div>
 

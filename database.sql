@@ -98,25 +98,27 @@ CREATE INDEX idx_mensajes_emisor_receptor ON mensajes(emisor_id, receptor_id);
 -- Datos de ejemplo
 -- Insertar usuarios
 INSERT INTO usuarios (nombre, apellido, email, password_hash, fecha_nacimiento, ubicacion, biografia) VALUES
-('Juan', 'Pérez', 'juan@example.com', SHA2('password123', 256), '1990-05-15', 'Ciudad de México', 'Desarrollador web y amante de la tecnología'),
-('María', 'Gómez', 'maria@example.com', SHA2('securepass', 256), '1988-11-22', 'Bogotá', 'Diseñadora gráfica y fotógrafa amateur'),
-('Carlos', 'Rodríguez', 'carlos@example.com', SHA2('mypassword', 256), '1995-03-10', 'Madrid', 'Estudiante de ingeniería informática'),
-('Ana', 'López', 'ana@example.com', SHA2('anapass123', 256), '1992-07-30', 'Buenos Aires', 'Chef profesional y food blogger'),
-('Luis', 'Martínez', 'luis@example.com', SHA2('luispass', 256), '1985-09-18', 'Santiago', 'Ingeniero civil especializado en puentes'),
-('Laura', 'Hernández', 'laura@example.com', SHA2('laurapass', 256), '1993-12-05', 'Lima', 'Psicóloga clínica con enfoque cognitivo');
+('Juan', 'Pérez', 'juan@gmail.com', SHA2('password123', 256), '1990-05-15', 'Ciudad de México', 'Desarrollador web y amante de la tecnología'),
+('María', 'Gómez', 'maria@gmail.com', SHA2('securepass', 256), '1988-11-22', 'Bogotá', 'Diseñadora gráfica y fotógrafa amateur'),
+('Carlos', 'Rodríguez', 'carlos@gmail.com', SHA2('mypassword', 256), '1995-03-10', 'Madrid', 'Estudiante de ingeniería informática'),
+('Ana', 'López', 'ana@gmail.com', SHA2('anapass123', 256), '1992-07-30', 'Buenos Aires', 'Chef profesional y food blogger'),
+('Luis', 'Martínez', 'luis@gmail.com', SHA2('luispass', 256), '1985-09-18', 'Santiago', 'Ingeniero civil especializado en puentes'),
+('Laura', 'Hernández', 'laura@gmail.com', SHA2('laurapass', 256), '1993-12-05', 'Lima', 'Psicóloga clínica con enfoque cognitivo');
+
 
 -- Insertar publicaciones
-INSERT INTO publicaciones (usuario_id, contenido) VALUES
-(1, 'Hoy es un gran día para aprender sobre bases de datos!'),
-(2, 'Acabo de terminar mi proyecto final, qué alivio!'),
-(3, 'Alguien quiere reunirse para estudiar para el examen?'),
-(4, 'Nueva receta en mi blog: Pastel de chocolate sin harina!'),
-(1, 'Recomendaciones de libros sobre programación?'),
-(3, 'Alguien sabe de buenos cursos online para aprender Python?'),
-(5, 'Acabo de publicar un artículo sobre estructuras de acero en mi blog'),
-(6, 'Taller gratuito de manejo de ansiedad este fin de semana'),
-(2, 'Fotos de mi último viaje a la playa ahora en mi perfil!'),
-(4, 'Consejos para mantener una alimentación saludable durante la cuarentena');
+INSERT INTO publicaciones (id, usuario_id, contenido) VALUES
+(1, 1, 'Mi gato acaba de romper 2 platos 😭'),
+(2, 2, 'Acabo de terminar mi proyecto final, LIBERTAAAAAD!'),
+(3, 3, 'Quien para salir este finde?🎉'),
+(4, 4, 'Nueva receta en mi blog: Pastel de chocolate sin harina!'),
+(5, 1, 'Recomendaciones de libros Enemies to Lovers?'),
+(6, 3, 'Alguien sabe de buenos cursos online para aprender Python?'),
+(7, 5, 'Alguien sabe como hacer un bendito marco teorico???'),
+(8, 6, 'Por fin vacaciones!!⛱️'),
+(9, 2, 'Ya subí receta vegana a mi canal de YouTube!'),
+(10, 4, 'Las matematicas no son lo mio 😣');
+
 
 -- Insertar amistades
 INSERT INTO amistades (usuario1_id, usuario2_id, estado) VALUES
@@ -150,19 +152,20 @@ INSERT INTO me_gusta (publicacion_id, usuario_id) VALUES
 (10, 5);
 
 -- Insertar comentarios
-INSERT INTO comentarios (publicacion_id, usuario_id, contenido) VALUES
-(1, 2, 'Totalmente de acuerdo, Juan!'),
-(1, 3, 'Qué interesante tema!'),
-(2, 1, 'Felicidades María!'),
-(2, 4, 'Qué bien, a celebrar!'),
-(3, 2, 'Yo puedo el fin de semana'),
-(4, 1, 'Se ve delicioso!'),
-(5, 3, 'Clean Code de Robert Martin es excelente'),
-(6, 2, 'En Coursera hay buenos cursos'),
-(7, 4, 'Muy interesante tu artículo'),
-(8, 1, 'Dónde será el taller?'),
-(9, 3, 'Hermosas fotos!'),
-(10, 5, 'Excelentes consejos, gracias');
+INSERT INTO comentarios (id, publicacion_id, usuario_id, contenido) VALUES
+(1, 1, 2, 'JAJAJAJAJAJA'),
+(2, 3, 3, 'YOOO...nooo'),
+(3, 2, 1, 'Que envidia!!'),
+(4, 4, 3, 'Sin harina, ni azucar, ni carbos, ni sabor, ni felicidad...'),
+(5, 2, 2, 'Pasamelooo'),
+(6, 6, 3, 'Hay uno en platzy, te envio link al priv'),
+(7, 10, 3, 'x2'),
+(8, 10, 1, 'Yo te ayudo'),
+(9, 7, 4, 'UY NOOO'),
+(10, 7, 4, 'A repetir metodología de la investigación JAJAJAJA'),
+(11, 3, 3, 'Yo si voy!'),
+(12, 6, 5, 'AMEN!');
+
 
 -- Insertar mensajes
 INSERT INTO mensajes (emisor_id, receptor_id, contenido) VALUES
