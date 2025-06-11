@@ -135,7 +135,7 @@ def index():
                             usuario=usuario,
                             publicaciones=publicaciones,
                             amigos=amigos,
-                            solicitudes=solicitudes,  # Ahora está definida
+                            solicitudes=solicitudes,  
                             unread_count=unread_count,
                             num_notificaciones_no_leidas=num_notificaciones_no_leidas,
                             notificaciones_recientes=notificaciones_recientes)
@@ -772,7 +772,6 @@ def logout():
     flash('Has cerrado sesión correctamente', 'info')
     return redirect(url_for('login'))
 
-# ... (all your other routes remain above this)
 
 @app.route('/notificaciones')
 def notificaciones():
@@ -781,7 +780,7 @@ def notificaciones():
 
     try:
         with get_db_cursor() as cursor:
-            # Get unread notifications
+            # obtener notificaciones no leídas
             cursor.execute("""
                 SELECT * FROM notificaciones 
                 WHERE usuario_id = %s AND leida = FALSE
@@ -789,7 +788,7 @@ def notificaciones():
             """, (session['user_id'],))
             notificaciones_no_leidas = cursor.fetchall()
 
-            # Get read notifications (last 5)
+            # Obtener ultimas 5 notificaciones
             cursor.execute("""
                 SELECT * FROM notificaciones 
                 WHERE usuario_id = %s AND leida = TRUE
@@ -856,6 +855,5 @@ def crear_notificacion(usuario_id, tipo, contenido):
         print(f"Error al crear notificación: {e}")
 
 
-# This should be the VERY LAST LINE in your file
 if __name__ == '__main__':
     app.run(debug=True)

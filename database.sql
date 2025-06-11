@@ -1,5 +1,5 @@
--- Creación de la base de datos
-DROP DATABASE IF EXISTS red_social;
+-- Creación de la bas e de datos
+DROP DATABASE IF EXISTS red_social; --pq ya habiamos hecho varios programas y es mejor prevenir
 CREATE DATABASE red_social;
 USE red_social;
 
@@ -12,11 +12,11 @@ CREATE TABLE usuarios (
     password_hash VARCHAR(255) NOT NULL,
     fecha_nacimiento DATE NOT NULL,
     ubicacion VARCHAR(100),
-    biografia TEXT,
+    biografia TEXT, -- Biografía del usuario tampoco hay vista para cambiarla
     fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
     ultimo_login DATETIME,
     activo BOOLEAN DEFAULT TRUE,
-    foto_perfil VARCHAR(255) DEFAULT 'default.jpg'
+    foto_perfil VARCHAR(255) DEFAULT 'default.jpg' --esto nada mas por ponerlo pq en el aplicativo no se puede cambiar la foto de perfil
 );
 
 -- Tabla de publicaciones
